@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { soundManager } from './sounds';
 
 // Tetris constants
 const BOARD_WIDTH = 10;
@@ -182,6 +183,11 @@ export default function App() {
   const [isPaused, setIsPaused] = useState(false);
   const [isStarted, setIsStarted] = useState(false);
   const [clearingLines, setClearingLines] = useState<number[]>([]);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [highScore, setHighScore] = useState(() => {
+    const saved = localStorage.getItem('tetris-highscore');
+    return saved ? parseInt(saved) : 0;
+  });
   const gameLoopRef = useRef<number | null>(null);
   const lastDropRef = useRef<number>(0);
 
@@ -190,6 +196,8 @@ export default function App() {
   }, [level]);
 
   const startNewGame = useCallback(() => {
+    soundManager.resume();
+    soundManager.playStart();
     const newPiece = getRandomPiece();
     setBoard(createEmptyBoard());
     setCurrentPiece(newPiece);
@@ -217,16 +225,35 @@ export default function App() {
       }
       setClearingLines(fullLines);
       
+      // Play sound
+      if (linesCleared === 4) {
+        soundManager.playTetris();
+      } else {
+        soundManager.playLineClear();
+      }
+      
       setTimeout(() => {
         setClearingLines([]);
         setBoard(clearedBoard);
       }, 300);
 
       const points = [0, 100, 300, 500, 800];
-      setScore(prev => prev + points[linesCleared] * level);
+      const newScore = score + points[linesCleared] * level;
+      setScore(newScore);
+      
+      // Update high score
+      if (newScore > highScore) {
+        setHighScore(newScore);
+        localStorage.setItem('tetris-highscore', newScore.toString());
+      }
+
       setLines(prev => {
         const newLines = prev + linesCleared;
-        setLevel(Math.floor(newLines / 10) + 1);
+        const newLevel = Math.floor(newLines / 10) + 1;
+        if (newLevel > level) {
+          soundManager.playLevelUp();
+        }
+        setLevel(newLevel);
         return newLines;
       });
     } else {
@@ -239,12 +266,13 @@ export default function App() {
     if (!isValidPosition(clearedBoard, newCurrentPiece.shape, newCurrentPiece.x, newCurrentPiece.y)) {
       setGameOver(true);
       setIsStarted(false);
+      soundManager.playGameOver();
       return;
     }
 
     setCurrentPiece(newCurrentPiece);
     setNextPiece(newNextPiece);
-  }, [board, currentPiece, nextPiece, level]);
+  }, [board, currentPiece, nextPiece, level, score, highScore]);
 
   const moveDown = useCallback(() => {
     if (gameOver || isPaused || !isStarted) return;
@@ -259,6 +287,7 @@ export default function App() {
     if (gameOver || isPaused || !isStarted) return;
     if (isValidPosition(board, currentPiece.shape, currentPiece.x - 1, currentPiece.y)) {
       setCurrentPiece(prev => ({ ...prev, x: prev.x - 1 }));
+      soundManager.playMove();
     }
   }, [board, currentPiece, gameOver, isPaused, isStarted]);
 
@@ -266,6 +295,7 @@ export default function App() {
     if (gameOver || isPaused || !isStarted) return;
     if (isValidPosition(board, currentPiece.shape, currentPiece.x + 1, currentPiece.y)) {
       setCurrentPiece(prev => ({ ...prev, x: prev.x + 1 }));
+      soundManager.playMove();
     }
   }, [board, currentPiece, gameOver, isPaused, isStarted]);
 
@@ -275,14 +305,19 @@ export default function App() {
     // Wall kick: try original position, then left, then right
     if (isValidPosition(board, rotated, currentPiece.x, currentPiece.y)) {
       setCurrentPiece(prev => ({ ...prev, shape: rotated }));
+      soundManager.playRotate();
     } else if (isValidPosition(board, rotated, currentPiece.x - 1, currentPiece.y)) {
       setCurrentPiece(prev => ({ ...prev, shape: rotated, x: prev.x - 1 }));
+      soundManager.playRotate();
     } else if (isValidPosition(board, rotated, currentPiece.x + 1, currentPiece.y)) {
       setCurrentPiece(prev => ({ ...prev, shape: rotated, x: prev.x + 1 }));
+      soundManager.playRotate();
     } else if (isValidPosition(board, rotated, currentPiece.x - 2, currentPiece.y)) {
       setCurrentPiece(prev => ({ ...prev, shape: rotated, x: prev.x - 2 }));
+      soundManager.playRotate();
     } else if (isValidPosition(board, rotated, currentPiece.x + 2, currentPiece.y)) {
       setCurrentPiece(prev => ({ ...prev, shape: rotated, x: prev.x + 2 }));
+      soundManager.playRotate();
     }
   }, [board, currentPiece, gameOver, isPaused, isStarted]);
 
@@ -292,8 +327,26 @@ export default function App() {
     const dropDistance = ghostY - currentPiece.y;
     setScore(prev => prev + dropDistance * 2);
     setCurrentPiece(prev => ({ ...prev, y: ghostY }));
+    soundManager.playDrop();
     setTimeout(() => lockPiece(), 0);
   }, [board, currentPiece, gameOver, isPaused, isStarted, lockPiece]);
+
+  const togglePause = useCallback(() => {
+    if (!isStarted || gameOver) return;
+    setIsPaused(prev => {
+      if (!prev) {
+        soundManager.playPause();
+      } else {
+        soundManager.playResume();
+      }
+      return !prev;
+    });
+  }, [isStarted, gameOver]);
+
+  const toggleSound = useCallback(() => {
+    const enabled = soundManager.toggle();
+    setSoundEnabled(enabled);
+  }, []);
 
   // Game loop
   useEffect(() => {
@@ -325,9 +378,11 @@ export default function App() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'p' || e.key === 'P') {
-        if (isStarted && !gameOver) {
-          setIsPaused(prev => !prev);
-        }
+        togglePause();
+        return;
+      }
+      if (e.key === 'm' || e.key === 'M') {
+        toggleSound();
         return;
       }
       if (e.key === 'Enter' && (!isStarted || gameOver)) {
@@ -360,7 +415,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [moveLeft, moveRight, moveDown, rotate, hardDrop, isStarted, gameOver, startNewGame]);
+  }, [moveLeft, moveRight, moveDown, rotate, hardDrop, isStarted, gameOver, startNewGame, togglePause, toggleSound]);
 
   // Render the board with current piece and ghost
   const renderBoard = () => {
@@ -440,52 +495,56 @@ export default function App() {
         ))}
       </div>
 
-      <div className="flex flex-col lg:flex-row items-center lg:items-start gap-6 p-4 relative z-10">
+      <div className="flex flex-col lg:flex-row items-center lg:items-start gap-4 p-2 lg:p-4 relative z-10 w-full max-w-5xl">
         {/* Title */}
-        <div className="lg:hidden text-center mb-2">
-          <h1 className="text-3xl font-black neon-text text-[#00ffaa] tracking-wider">
+        <div className="lg:hidden text-center mb-1">
+          <h1 className="text-2xl font-black neon-text text-[#00ffaa] tracking-wider">
             NEON TETRIS
           </h1>
         </div>
 
         {/* Left panel - Score */}
-        <div className="hidden lg:flex flex-col gap-4 w-48">
-          <h1 className="text-2xl font-black neon-text text-[#00ffaa] tracking-wider text-center mb-4">
+        <div className="hidden lg:flex flex-col gap-3 w-48">
+          <h1 className="text-2xl font-black neon-text text-[#00ffaa] tracking-wider text-center mb-2">
             NEON<br/>TETRIS
           </h1>
           
-          <div className="neon-border rounded-lg p-4 bg-black/50">
+          <div className="neon-border rounded-lg p-3 bg-black/50">
             <div className="text-[#00ffaa] text-xs tracking-widest mb-1">SCORE</div>
-            <div className="text-white text-2xl font-bold" style={{ textShadow: '0 0 10px #00ffaa' }}>
+            <div className="text-white text-xl font-bold" style={{ textShadow: '0 0 10px #00ffaa' }}>
               {score.toLocaleString()}
             </div>
+            <div className="text-[#00ffaa]/50 text-[10px] mt-1">HIGH: {highScore.toLocaleString()}</div>
           </div>
 
-          <div className="neon-border-pink rounded-lg p-4 bg-black/50">
+          <div className="neon-border-pink rounded-lg p-3 bg-black/50">
             <div className="text-[#ff00ff] text-xs tracking-widest mb-1">LEVEL</div>
-            <div className="text-white text-2xl font-bold" style={{ textShadow: '0 0 10px #ff00ff' }}>
+            <div className="text-white text-xl font-bold" style={{ textShadow: '0 0 10px #ff00ff' }}>
               {level}
             </div>
           </div>
 
-          <div className="neon-border-cyan rounded-lg p-4 bg-black/50">
+          <div className="neon-border-cyan rounded-lg p-3 bg-black/50">
             <div className="text-[#00aaff] text-xs tracking-widest mb-1">LINES</div>
-            <div className="text-white text-2xl font-bold" style={{ textShadow: '0 0 10px #00aaff' }}>
+            <div className="text-white text-xl font-bold" style={{ textShadow: '0 0 10px #00aaff' }}>
               {lines}
             </div>
           </div>
 
-          <div className="mt-4 text-[#00ffaa]/50 text-[10px] tracking-wider leading-relaxed">
-            <div>← → MOVE</div>
-            <div>↑ ROTATE</div>
-            <div>↓ SOFT DROP</div>
-            <div>SPACE HARD DROP</div>
-            <div>P PAUSE</div>
-          </div>
+          {/* Sound toggle */}
+          <button
+            onClick={toggleSound}
+            className="neon-border rounded-lg p-3 bg-black/50 text-left hover:bg-black/70 transition-colors"
+          >
+            <div className="text-[#00ffaa] text-xs tracking-widest mb-1">SOUND</div>
+            <div className="text-white text-sm font-bold flex items-center gap-2">
+              {soundEnabled ? '🔊 ON' : '🔇 OFF'}
+            </div>
+          </button>
         </div>
 
         {/* Game Board */}
-        <div className="relative">
+        <div className="relative flex-shrink-0">
           <div
             className="neon-border rounded-lg p-1 bg-black/80"
             style={{
@@ -538,10 +597,11 @@ export default function App() {
               {/* Start screen overlay */}
               {!isStarted && !gameOver && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 rounded-lg z-20">
-                  <h2 className="text-2xl font-black text-[#00ffaa] neon-text mb-4 tracking-wider">
+                  <h2 className="text-2xl font-black text-[#00ffaa] neon-text mb-2 tracking-wider">
                     NEON TETRIS
                   </h2>
-                  <p className="text-white/70 text-sm mb-6 tracking-wide">
+                  <p className="text-[#00ffaa]/50 text-xs mb-4">HIGH SCORE: {highScore.toLocaleString()}</p>
+                  <p className="text-white/70 text-sm mb-4 tracking-wide">
                     Press ENTER to start
                   </p>
                   <button
@@ -560,8 +620,14 @@ export default function App() {
                   <h2 className="text-2xl font-black text-[#ff0066] mb-2 tracking-wider" style={{ textShadow: '0 0 10px #ff0066, 0 0 20px #ff0066, 0 0 40px #ff0066' }}>
                     GAME OVER
                   </h2>
-                  <p className="text-white/70 text-sm mb-2">Score: {score.toLocaleString()}</p>
-                  <p className="text-white/70 text-sm mb-6">Level: {level}</p>
+                  <p className="text-white/70 text-sm mb-1">Score: {score.toLocaleString()}</p>
+                  <p className="text-white/70 text-sm mb-1">Level: {level}</p>
+                  {score >= highScore && score > 0 && (
+                    <p className="text-[#ffff00] text-sm mb-2 font-bold" style={{ textShadow: '0 0 10px #ffff00' }}>
+                      🏆 NEW HIGH SCORE! 🏆
+                    </p>
+                  )}
+                  <p className="text-white/50 text-xs mb-4">High Score: {highScore.toLocaleString()}</p>
                   <button
                     onClick={startNewGame}
                     className="px-6 py-3 bg-transparent border-2 border-[#ff0066] text-[#ff0066] rounded-lg font-bold tracking-wider hover:bg-[#ff0066]/20 transition-all duration-300"
@@ -586,10 +652,10 @@ export default function App() {
         </div>
 
         {/* Right panel - Next piece & Mobile controls */}
-        <div className="flex flex-col gap-4 w-48">
+        <div className="flex flex-col gap-3 w-48">
           {/* Next piece */}
-          <div className="neon-border rounded-lg p-4 bg-black/50">
-            <div className="text-[#00ffaa] text-xs tracking-widest mb-3">NEXT</div>
+          <div className="neon-border rounded-lg p-3 bg-black/50">
+            <div className="text-[#00ffaa] text-xs tracking-widest mb-2">NEXT</div>
             <div className="flex justify-center">
               <div
                 className="relative"
@@ -618,11 +684,20 @@ export default function App() {
           </div>
 
           {/* Mobile info */}
-          <div className="lg:hidden neon-border rounded-lg p-4 bg-black/50">
-            <div className="text-[#00ffaa] text-xs tracking-widest mb-1">SCORE</div>
-            <div className="text-white text-xl font-bold" style={{ textShadow: '0 0 10px #00ffaa' }}>
+          <div className="lg:hidden neon-border rounded-lg p-3 bg-black/50">
+            <div className="flex justify-between items-center mb-2">
+              <div className="text-[#00ffaa] text-xs tracking-widest">SCORE</div>
+              <button
+                onClick={toggleSound}
+                className="text-lg"
+              >
+                {soundEnabled ? '🔊' : '🔇'}
+              </button>
+            </div>
+            <div className="text-white text-lg font-bold" style={{ textShadow: '0 0 10px #00ffaa' }}>
               {score.toLocaleString()}
             </div>
+            <div className="text-[#00ffaa]/50 text-[10px]">HIGH: {highScore.toLocaleString()}</div>
             <div className="flex gap-4 mt-2">
               <div>
                 <div className="text-[#ff00ff] text-xs tracking-widest">LVL</div>
@@ -680,29 +755,39 @@ export default function App() {
                 className="w-full h-12 rounded-lg border border-[#ffff00] text-[#ffff00] font-bold text-sm tracking-wider flex items-center justify-center active:bg-[#ffff00]/20"
                 style={{ boxShadow: '0 0 5px #ffff0040' }}
               >
-                DROP
+                ⬇ DROP
               </button>
             </div>
-            <div className="flex justify-center gap-2 mt-2">
+            <div className="flex justify-center gap-2 mt-1">
               <button
-                onClick={() => isStarted && !gameOver ? setIsPaused(p => !p) : startNewGame()}
-                className="w-full h-10 rounded-lg border border-[#00aaff] text-[#00aaff] font-bold text-xs tracking-wider flex items-center justify-center active:bg-[#00aaff]/20"
+                onClick={togglePause}
+                className="flex-1 h-10 rounded-lg border border-[#00aaff] text-[#00aaff] font-bold text-xs tracking-wider flex items-center justify-center active:bg-[#00aaff]/20"
                 style={{ boxShadow: '0 0 5px #00aaff40' }}
               >
-                {isPaused ? 'RESUME' : isStarted ? 'PAUSE' : 'START'}
+                {isPaused ? '▶ RESUME' : '⏸ PAUSE'}
+              </button>
+              <button
+                onClick={startNewGame}
+                className="flex-1 h-10 rounded-lg border border-[#ff0066] text-[#ff0066] font-bold text-xs tracking-wider flex items-center justify-center active:bg-[#ff0066]/20"
+                style={{ boxShadow: '0 0 5px #ff006640' }}
+              >
+                🔄 NEW
               </button>
             </div>
           </div>
 
           {/* Desktop controls hint */}
-          <div className="hidden lg:block mt-4 text-[#00ffaa]/50 text-[10px] tracking-wider leading-relaxed">
+          <div className="hidden lg:block mt-2">
             <div className="neon-border rounded-lg p-3 bg-black/50">
-              <div className="text-[#00ffaa]/70 mb-2">CONTROLS</div>
-              <div>← → MOVE</div>
-              <div>↑ ROTATE</div>
-              <div>↓ SOFT DROP</div>
-              <div>SPACE HARD DROP</div>
-              <div>P PAUSE</div>
+              <div className="text-[#00ffaa]/70 text-xs mb-2 tracking-widest">CONTROLS</div>
+              <div className="text-[#00ffaa]/50 text-[10px] tracking-wider leading-relaxed">
+                <div>← → MOVE</div>
+                <div>↑ ROTATE</div>
+                <div>↓ SOFT DROP</div>
+                <div>SPACE HARD DROP</div>
+                <div>P PAUSE</div>
+                <div>M SOUND ON/OFF</div>
+              </div>
             </div>
           </div>
         </div>
