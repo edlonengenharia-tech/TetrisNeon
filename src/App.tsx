@@ -65,10 +65,10 @@ const sounds = {
   },
 };
 
-// Tetris constants
+// Tetris constants - Ajustado para ficar proporcional
 const BOARD_WIDTH = 10;
 const BOARD_HEIGHT = 20;
-const CELL_SIZE = 30;
+const CELL_SIZE = 28; // Reduzido de 30 para 28 para melhor proporção
 
 // Tetromino shapes
 const TETROMINOES: { [key: string]: { shape: number[][]; color: string } } = {
@@ -233,7 +233,6 @@ export default function App() {
   const gameLoopRef = useRef<number | null>(null);
   const lastDropRef = useRef<number>(0);
   const particleIdRef = useRef(0);
-  const startTimeRef = useRef<number>(0);
 
   const getDropSpeed = useCallback(() => {
     return Math.max(100, 800 - (level - 1) * 70);
@@ -242,17 +241,17 @@ export default function App() {
   const createParticles = (rows: number[]) => {
     const newParticles: Particle[] = [];
     rows.forEach(row => {
-      for (let i = 0; i < 20; i++) {
+      for (let i = 0; i < 25; i++) {
         newParticles.push({
           id: particleIdRef.current++,
           x: Math.random() * BOARD_WIDTH * CELL_SIZE,
           y: row * CELL_SIZE + CELL_SIZE / 2,
-          vx: (Math.random() - 0.5) * 10,
-          vy: (Math.random() - 0.5) * 10,
+          vx: (Math.random() - 0.5) * 12,
+          vy: (Math.random() - 0.5) * 12,
           color: ['#00ffff', '#ff00ff', '#00ff00', '#ffff00', '#ff0000'][Math.floor(Math.random() * 5)],
           life: 1,
           maxLife: 1,
-          size: Math.random() * 4 + 2,
+          size: Math.random() * 5 + 2,
         });
       }
     });
@@ -306,7 +305,6 @@ export default function App() {
     setIsStarted(true);
     setParticles([]);
     setStats({ piecesPlaced: 0, linesCleared: 0, tetrisCount: 0, timePlayed: 0 });
-    startTimeRef.current = Date.now();
   }, []);
 
   const lockPiece = useCallback(() => {
@@ -543,144 +541,168 @@ export default function App() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Calculate dimensions
+  const boardWidth = BOARD_WIDTH * CELL_SIZE;
+  const boardHeight = BOARD_HEIGHT * CELL_SIZE;
+
   return (
-    <div className="min-h-screen w-full bg-[#0a0a0f] flex items-center justify-center p-4 overflow-auto">
-      <div className={`flex flex-col lg:flex-row items-start gap-4 ${shake ? 'animate-pulse' : ''}`}>
-        <h1 className="text-4xl font-black text-[#00ffaa] tracking-wider lg:hidden mb-2" style={{ textShadow: '0 0 10px #00ffaa, 0 0 20px #00ffaa' }}>
+    <div className="min-h-screen w-full bg-gradient-to-br from-[#0a0a0f] via-[#0f0f1a] to-[#0a0a0f] flex items-center justify-center p-4 overflow-auto">
+      {/* Background grid effect */}
+      <div className="fixed inset-0 opacity-5 pointer-events-none" style={{
+        backgroundImage: 'linear-gradient(rgba(0, 255, 170, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 255, 170, 0.1) 1px, transparent 1px)',
+        backgroundSize: '50px 50px'
+      }}></div>
+
+      <div className={`relative flex flex-col lg:flex-row items-start gap-6 ${shake ? 'animate-pulse' : ''}`}>
+        {/* Title - Mobile only */}
+        <h1 className="text-3xl font-black text-[#00ffaa] tracking-wider lg:hidden mb-2 text-center w-full" style={{ textShadow: '0 0 10px #00ffaa, 0 0 20px #00ffaa, 0 0 30px #00ffaa' }}>
           NEON TETRIS
         </h1>
 
-        <div className="flex flex-col lg:flex-row gap-4">
+        <div className="flex flex-col lg:flex-row gap-6 items-start">
           {/* Game Board */}
-          <div className="relative border-2 border-[#00ffaa] rounded-lg p-1" style={{ boxShadow: '0 0 10px #00ffaa, 0 0 20px #00ffaa' }}>
-            <div style={{ width: BOARD_WIDTH * CELL_SIZE, height: BOARD_HEIGHT * CELL_SIZE, position: 'relative' }}>
-              {displayBoard.map((row, y) =>
-                row.map((cell, x) => {
-                  const isGhost = cell?.startsWith('ghost-');
-                  const color = isGhost ? cell!.replace('ghost-', '') : cell;
-                  return (
-                    <div
-                      key={`${y}-${x}`}
-                      style={{
-                        position: 'absolute',
-                        left: x * CELL_SIZE,
-                        top: y * CELL_SIZE,
-                        width: CELL_SIZE - 1,
-                        height: CELL_SIZE - 1,
-                        backgroundColor: color
-                          ? isGhost
-                            ? 'transparent'
-                            : color
-                          : 'rgba(0, 255, 170, 0.05)',
-                        border: color
-                          ? isGhost
-                            ? `1px dashed ${color}40`
-                            : `1px solid ${color}`
-                          : '1px solid rgba(0, 255, 170, 0.1)',
-                        boxShadow: color && !isGhost ? `0 0 5px ${color}, 0 0 10px ${color}` : 'none',
-                        opacity: isGhost ? 0.3 : 1,
-                      }}
-                    />
-                  );
-                })
-              )}
+          <div className="relative">
+            <div 
+              className="relative rounded-xl overflow-hidden"
+              style={{ 
+                width: boardWidth + 4,
+                height: boardHeight + 4,
+                background: 'linear-gradient(135deg, rgba(0, 255, 170, 0.1), rgba(0, 255, 170, 0.05))',
+                boxShadow: '0 0 20px rgba(0, 255, 170, 0.3), 0 0 40px rgba(0, 255, 170, 0.2), inset 0 0 20px rgba(0, 255, 170, 0.1)',
+                border: '2px solid rgba(0, 255, 170, 0.5)'
+              }}
+            >
+              <div style={{ width: boardWidth, height: boardHeight, position: 'relative', margin: '2px' }}>
+                {displayBoard.map((row, y) =>
+                  row.map((cell, x) => {
+                    const isGhost = cell?.startsWith('ghost-');
+                    const color = isGhost ? cell!.replace('ghost-', '') : cell;
+                    return (
+                      <div
+                        key={`${y}-${x}`}
+                        style={{
+                          position: 'absolute',
+                          left: x * CELL_SIZE,
+                          top: y * CELL_SIZE,
+                          width: CELL_SIZE - 1,
+                          height: CELL_SIZE - 1,
+                          backgroundColor: color
+                            ? isGhost
+                              ? 'transparent'
+                              : color
+                            : 'rgba(0, 255, 170, 0.03)',
+                          border: color
+                            ? isGhost
+                              ? `1px dashed ${color}30`
+                              : `1px solid ${color}`
+                            : '1px solid rgba(0, 255, 170, 0.08)',
+                          boxShadow: color && !isGhost ? `0 0 8px ${color}, 0 0 15px ${color}80, inset 0 0 5px ${color}40` : 'none',
+                          opacity: isGhost ? 0.25 : 1,
+                          borderRadius: '2px',
+                          transition: 'all 0.1s ease'
+                        }}
+                      />
+                    );
+                  })
+                )}
 
-              {/* Particles */}
-              {particles.map(p => (
-                <div
-                  key={p.id}
-                  style={{
-                    position: 'absolute',
-                    left: p.x,
-                    top: p.y,
-                    width: p.size,
-                    height: p.size,
-                    backgroundColor: p.color,
-                    boxShadow: `0 0 ${p.size * 2}px ${p.color}`,
-                    borderRadius: '50%',
-                    opacity: p.life,
-                    pointerEvents: 'none',
-                  }}
-                />
-              ))}
+                {/* Particles */}
+                {particles.map(p => (
+                  <div
+                    key={p.id}
+                    style={{
+                      position: 'absolute',
+                      left: p.x,
+                      top: p.y,
+                      width: p.size,
+                      height: p.size,
+                      backgroundColor: p.color,
+                      boxShadow: `0 0 ${p.size * 3}px ${p.color}, 0 0 ${p.size * 5}px ${p.color}`,
+                      borderRadius: '50%',
+                      opacity: p.life,
+                      pointerEvents: 'none',
+                    }}
+                  />
+                ))}
 
-              {/* Start screen */}
-              {!isStarted && !gameOver && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 rounded-lg">
-                  <h2 className="text-3xl font-black text-[#00ffaa] mb-4" style={{ textShadow: '0 0 10px #00ffaa' }}>
-                    NEON TETRIS
-                  </h2>
-                  <button
-                    onClick={startNewGame}
-                    className="px-8 py-4 bg-transparent border-2 border-[#00ffaa] text-[#00ffaa] rounded-lg font-bold text-xl hover:bg-[#00ffaa]/20 transition-all"
-                    style={{ boxShadow: '0 0 10px #00ffaa' }}
-                  >
-                    START GAME
-                  </button>
-                  <p className="text-white/50 text-sm mt-4">Press ENTER or click to start</p>
-                </div>
-              )}
+                {/* Start screen */}
+                {!isStarted && !gameOver && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 backdrop-blur-sm">
+                    <h2 className="text-4xl font-black text-[#00ffaa] mb-6" style={{ textShadow: '0 0 15px #00ffaa, 0 0 30px #00ffaa, 0 0 45px #00ffaa' }}>
+                      NEON TETRIS
+                    </h2>
+                    <button
+                      onClick={startNewGame}
+                      className="px-10 py-5 bg-transparent border-2 border-[#00ffaa] text-[#00ffaa] rounded-xl font-bold text-xl hover:bg-[#00ffaa]/20 transition-all duration-300 hover:scale-105"
+                      style={{ boxShadow: '0 0 20px #00ffaa, 0 0 40px #00ffaa40' }}
+                    >
+                      START GAME
+                    </button>
+                    <p className="text-white/50 text-sm mt-6">Press ENTER or click to start</p>
+                  </div>
+                )}
 
-              {/* Game Over */}
-              {gameOver && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/85 rounded-lg">
-                  <h2 className="text-3xl font-black text-[#ff0066] mb-4" style={{ textShadow: '0 0 10px #ff0066' }}>
-                    GAME OVER
-                  </h2>
-                  <p className="text-white text-xl mb-2">Score: {score}</p>
-                  <p className="text-white/70 text-sm mb-4">Time: {formatTime(stats.timePlayed)}</p>
-                  <button
-                    onClick={startNewGame}
-                    className="px-8 py-4 bg-transparent border-2 border-[#ff0066] text-[#ff0066] rounded-lg font-bold text-xl hover:bg-[#ff0066]/20 transition-all mt-4"
-                    style={{ boxShadow: '0 0 10px #ff0066' }}
-                  >
-                    PLAY AGAIN
-                  </button>
-                </div>
-              )}
+                {/* Game Over */}
+                {gameOver && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 backdrop-blur-sm">
+                    <h2 className="text-4xl font-black text-[#ff0066] mb-4" style={{ textShadow: '0 0 15px #ff0066, 0 0 30px #ff0066, 0 0 45px #ff0066' }}>
+                      GAME OVER
+                    </h2>
+                    <p className="text-white text-2xl mb-2">Score: {score}</p>
+                    <p className="text-white/70 text-sm mb-6">Time: {formatTime(stats.timePlayed)}</p>
+                    <button
+                      onClick={startNewGame}
+                      className="px-10 py-5 bg-transparent border-2 border-[#ff0066] text-[#ff0066] rounded-xl font-bold text-xl hover:bg-[#ff0066]/20 transition-all duration-300 hover:scale-105"
+                      style={{ boxShadow: '0 0 20px #ff0066, 0 0 40px #ff006640' }}
+                    >
+                      PLAY AGAIN
+                    </button>
+                  </div>
+                )}
 
-              {/* Pause */}
-              {isPaused && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 rounded-lg">
-                  <h2 className="text-3xl font-black text-[#ffff00]" style={{ textShadow: '0 0 10px #ffff00' }}>
-                    PAUSED
-                  </h2>
-                </div>
-              )}
+                {/* Pause */}
+                {isPaused && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 backdrop-blur-sm">
+                    <h2 className="text-4xl font-black text-[#ffff00]" style={{ textShadow: '0 0 15px #ffff00, 0 0 30px #ffff00, 0 0 45px #ffff00' }}>
+                      PAUSED
+                    </h2>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
-          {/* Right Panel */}
-          <div className="flex flex-col gap-3 w-64">
-            {/* Score & Stats */}
-            <div className="border border-[#00ffaa] rounded-lg p-3">
-              <div className="text-[#00ffaa] text-xs mb-1">SCORE</div>
-              <div className="text-white text-2xl font-bold">{score}</div>
+          {/* Right Panel - Ajustado para mesma altura */}
+          <div className="flex flex-col gap-3" style={{ width: boardWidth }}>
+            {/* Score & Combo */}
+            <div className="border-2 border-[#00ffaa] rounded-xl p-4 bg-black/50 backdrop-blur-sm" style={{ boxShadow: '0 0 15px rgba(0, 255, 170, 0.3)' }}>
+              <div className="text-[#00ffaa] text-xs mb-1 tracking-wider">SCORE</div>
+              <div className="text-white text-3xl font-black">{score.toLocaleString()}</div>
               {combo > 1 && (
-                <div className="text-[#ffff00] text-sm font-bold mt-1" style={{ textShadow: '0 0 5px #ffff00' }}>
-                  COMBO x{combo}!
+                <div className="text-[#ffff00] text-lg font-bold mt-2 animate-pulse" style={{ textShadow: '0 0 10px #ffff00, 0 0 20px #ffff00' }}>
+                  🔥 COMBO x{combo}!
                 </div>
               )}
             </div>
 
             {/* Level & Lines */}
-            <div className="grid grid-cols-2 gap-2">
-              <div className="border border-[#ff00ff] rounded-lg p-3">
-                <div className="text-[#ff00ff] text-xs mb-1">LEVEL</div>
-                <div className="text-white text-xl font-bold">{level}</div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="border-2 border-[#ff00ff] rounded-xl p-3 bg-black/50 backdrop-blur-sm" style={{ boxShadow: '0 0 10px rgba(255, 0, 255, 0.3)' }}>
+                <div className="text-[#ff00ff] text-xs mb-1 tracking-wider">LEVEL</div>
+                <div className="text-white text-2xl font-bold">{level}</div>
               </div>
-              <div className="border border-[#00aaff] rounded-lg p-3">
-                <div className="text-[#00aaff] text-xs mb-1">LINES</div>
-                <div className="text-white text-xl font-bold">{lines}</div>
+              <div className="border-2 border-[#00aaff] rounded-xl p-3 bg-black/50 backdrop-blur-sm" style={{ boxShadow: '0 0 10px rgba(0, 170, 255, 0.3)' }}>
+                <div className="text-[#00aaff] text-xs mb-1 tracking-wider">LINES</div>
+                <div className="text-white text-2xl font-bold">{lines}</div>
               </div>
             </div>
 
             {/* Hold Piece */}
-            <div className="border border-[#ff6600] rounded-lg p-3">
-              <div className="text-[#ff6600] text-xs mb-2">HOLD (C)</div>
+            <div className="border-2 border-[#ff6600] rounded-xl p-3 bg-black/50 backdrop-blur-sm" style={{ boxShadow: '0 0 10px rgba(255, 102, 0, 0.3)' }}>
+              <div className="text-[#ff6600] text-xs mb-2 tracking-wider">HOLD (C)</div>
               {holdPiece ? (
-                <div className="flex justify-center">
-                  <div style={{ width: 4 * 16, height: 4 * 16, position: 'relative' }}>
+                <div className="flex justify-center py-2">
+                  <div style={{ width: 4 * 18, height: 4 * 18, position: 'relative' }}>
                     {holdPiece.shape.map((row, y) =>
                       row.map((cell, x) =>
                         cell ? (
@@ -688,13 +710,14 @@ export default function App() {
                             key={`hold-${y}-${x}`}
                             style={{
                               position: 'absolute',
-                              left: x * 16,
-                              top: y * 16,
-                              width: 15,
-                              height: 15,
+                              left: x * 18,
+                              top: y * 18,
+                              width: 17,
+                              height: 17,
                               backgroundColor: holdPiece.color,
                               border: `1px solid ${holdPiece.color}`,
-                              boxShadow: `0 0 5px ${holdPiece.color}`,
+                              boxShadow: `0 0 8px ${holdPiece.color}, 0 0 15px ${holdPiece.color}80`,
+                              borderRadius: '2px',
                             }}
                           />
                         ) : null
@@ -703,17 +726,17 @@ export default function App() {
                   </div>
                 </div>
               ) : (
-                <div className="text-white/30 text-xs text-center py-2">Empty</div>
+                <div className="text-white/30 text-xs text-center py-4">Empty</div>
               )}
             </div>
 
             {/* Next Pieces */}
-            <div className="border border-[#00ff00] rounded-lg p-3">
-              <div className="text-[#00ff00] text-xs mb-2">NEXT</div>
-              <div className="flex flex-col gap-2">
+            <div className="border-2 border-[#00ff00] rounded-xl p-3 bg-black/50 backdrop-blur-sm" style={{ boxShadow: '0 0 10px rgba(0, 255, 0, 0.3)' }}>
+              <div className="text-[#00ff00] text-xs mb-2 tracking-wider">NEXT</div>
+              <div className="flex justify-around">
                 {nextPieces.map((piece, idx) => (
-                  <div key={idx} className="flex justify-center" style={{ opacity: 1 - idx * 0.2 }}>
-                    <div style={{ width: 4 * 14, height: 4 * 14, position: 'relative' }}>
+                  <div key={idx} style={{ opacity: 1 - idx * 0.25 }}>
+                    <div style={{ width: 4 * 15, height: 4 * 15, position: 'relative' }}>
                       {piece.shape.map((row, y) =>
                         row.map((cell, x) =>
                           cell ? (
@@ -721,13 +744,14 @@ export default function App() {
                               key={`next-${idx}-${y}-${x}`}
                               style={{
                                 position: 'absolute',
-                                left: x * 14,
-                                top: y * 14,
-                                width: 13,
-                                height: 13,
+                                left: x * 15,
+                                top: y * 15,
+                                width: 14,
+                                height: 14,
                                 backgroundColor: piece.color,
                                 border: `1px solid ${piece.color}`,
-                                boxShadow: `0 0 3px ${piece.color}`,
+                                boxShadow: `0 0 5px ${piece.color}, 0 0 10px ${piece.color}80`,
+                                borderRadius: '2px',
                               }}
                             />
                           ) : null
@@ -740,39 +764,39 @@ export default function App() {
             </div>
 
             {/* Statistics */}
-            <div className="border border-[#00ffaa]/50 rounded-lg p-3 text-xs">
-              <div className="text-[#00ffaa] mb-2">STATISTICS</div>
-              <div className="text-white/70 space-y-1">
+            <div className="border-2 border-[#00ffaa]/50 rounded-xl p-3 bg-black/50 backdrop-blur-sm">
+              <div className="text-[#00ffaa] text-xs mb-2 tracking-wider">STATISTICS</div>
+              <div className="text-white/70 text-xs space-y-1.5">
                 <div className="flex justify-between">
                   <span>Pieces:</span>
-                  <span className="text-white">{stats.piecesPlaced}</span>
+                  <span className="text-white font-bold">{stats.piecesPlaced}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Tetris:</span>
-                  <span className="text-white">{stats.tetrisCount}</span>
+                  <span className="text-white font-bold">{stats.tetrisCount}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Max Combo:</span>
-                  <span className="text-white">{maxCombo}</span>
+                  <span className="text-white font-bold">{maxCombo}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Time:</span>
-                  <span className="text-white">{formatTime(stats.timePlayed)}</span>
+                  <span className="text-white font-bold">{formatTime(stats.timePlayed)}</span>
                 </div>
               </div>
             </div>
 
             {/* Controls */}
-            <div className="border border-[#00ffaa]/50 rounded-lg p-3 text-xs text-white/70">
-              <div className="text-[#00ffaa] mb-2">CONTROLS</div>
-              <div className="space-y-1">
-                <div>← → Move</div>
-                <div>↑ Rotate</div>
-                <div>↓ Soft drop</div>
-                <div>SPACE Hard drop</div>
-                <div>C Hold piece</div>
-                <div>P Pause</div>
-                <div>M Sound</div>
+            <div className="border-2 border-[#00ffaa]/50 rounded-xl p-3 bg-black/50 backdrop-blur-sm">
+              <div className="text-[#00ffaa] text-xs mb-2 tracking-wider">CONTROLS</div>
+              <div className="text-white/70 text-xs space-y-1">
+                <div className="flex justify-between"><span>← →</span><span>Move</span></div>
+                <div className="flex justify-between"><span>↑</span><span>Rotate</span></div>
+                <div className="flex justify-between"><span>↓</span><span>Soft drop</span></div>
+                <div className="flex justify-between"><span>SPACE</span><span>Hard drop</span></div>
+                <div className="flex justify-between"><span>C</span><span>Hold</span></div>
+                <div className="flex justify-between"><span>P</span><span>Pause</span></div>
+                <div className="flex justify-between"><span>M</span><span>Sound</span></div>
               </div>
             </div>
 
@@ -782,8 +806,8 @@ export default function App() {
                 soundEnabled = !soundEnabled;
                 setSoundOn(soundEnabled);
               }}
-              className="border border-[#ffff00] rounded-lg p-3 text-[#ffff00] font-bold hover:bg-[#ffff00]/20 transition-all text-sm"
-              style={{ boxShadow: soundOn ? '0 0 10px #ffff00' : 'none' }}
+              className="border-2 border-[#ffff00] rounded-xl p-3 text-[#ffff00] font-bold hover:bg-[#ffff00]/20 transition-all text-sm backdrop-blur-sm"
+              style={{ boxShadow: soundOn ? '0 0 15px #ffff00, 0 0 30px #ffff0040' : 'none' }}
             >
               {soundOn ? '🔊 SOUND ON' : '🔇 SOUND OFF'}
             </button>
@@ -791,28 +815,28 @@ export default function App() {
         </div>
 
         {/* Mobile controls */}
-        <div className="lg:hidden flex flex-col gap-2 mt-4 w-full max-w-xs">
+        <div className="lg:hidden flex flex-col gap-3 mt-4 w-full" style={{ maxWidth: boardWidth }}>
           <div className="grid grid-cols-3 gap-2">
-            <button onClick={hold} className="h-14 border-2 border-[#ff6600] text-[#ff6600] text-sm font-bold rounded-lg active:bg-[#ff6600]/20">
+            <button onClick={hold} className="h-16 border-2 border-[#ff6600] text-[#ff6600] text-sm font-bold rounded-xl active:bg-[#ff6600]/20 transition-all" style={{ boxShadow: '0 0 10px rgba(255, 102, 0, 0.3)' }}>
               HOLD
             </button>
-            <button onClick={rotate} className="h-14 border-2 border-[#ff00ff] text-[#ff00ff] text-2xl rounded-lg active:bg-[#ff00ff]/20">
+            <button onClick={rotate} className="h-16 border-2 border-[#ff00ff] text-[#ff00ff] text-3xl rounded-xl active:bg-[#ff00ff]/20 transition-all" style={{ boxShadow: '0 0 10px rgba(255, 0, 255, 0.3)' }}>
               ↻
             </button>
             <div></div>
           </div>
           <div className="grid grid-cols-3 gap-2">
-            <button onClick={moveLeft} className="h-14 border-2 border-[#00ffaa] text-[#00ffaa] text-2xl rounded-lg active:bg-[#00ffaa]/20">
+            <button onClick={moveLeft} className="h-16 border-2 border-[#00ffaa] text-[#00ffaa] text-3xl rounded-xl active:bg-[#00ffaa]/20 transition-all" style={{ boxShadow: '0 0 10px rgba(0, 255, 170, 0.3)' }}>
               ←
             </button>
-            <button onClick={moveDown} className="h-14 border-2 border-[#00ffaa] text-[#00ffaa] text-2xl rounded-lg active:bg-[#00ffaa]/20">
+            <button onClick={moveDown} className="h-16 border-2 border-[#00ffaa] text-[#00ffaa] text-3xl rounded-xl active:bg-[#00ffaa]/20 transition-all" style={{ boxShadow: '0 0 10px rgba(0, 255, 170, 0.3)' }}>
               ↓
             </button>
-            <button onClick={moveRight} className="h-14 border-2 border-[#00ffaa] text-[#00ffaa] text-2xl rounded-lg active:bg-[#00ffaa]/20">
+            <button onClick={moveRight} className="h-16 border-2 border-[#00ffaa] text-[#00ffaa] text-3xl rounded-xl active:bg-[#00ffaa]/20 transition-all" style={{ boxShadow: '0 0 10px rgba(0, 255, 170, 0.3)' }}>
               →
             </button>
           </div>
-          <button onClick={hardDrop} className="h-12 border-2 border-[#ffff00] text-[#ffff00] font-bold rounded-lg active:bg-[#ffff00]/20">
+          <button onClick={hardDrop} className="h-14 border-2 border-[#ffff00] text-[#ffff00] font-bold rounded-xl active:bg-[#ffff00]/20 transition-all" style={{ boxShadow: '0 0 10px rgba(255, 255, 0, 0.3)' }}>
             ⬇ DROP
           </button>
         </div>
