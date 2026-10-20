@@ -1,10 +1,9 @@
 @echo off
-title Neon Tetris - Build Windows EXE
+title Neon Tetris - Build Windows
 cd /d "%~dp0"
 
 if not exist "package.json" (
     echo ERROR: package.json not found!
-    echo Please run this script from the project folder.
     pause
     exit /b 1
 )
@@ -12,10 +11,15 @@ if not exist "package.json" (
 where node >nul 2>nul
 if %ERRORLEVEL% NEQ 0 (
     echo ERROR: Node.js not found!
-    echo Please install Node.js from https://nodejs.org/
+    echo Install from: https://nodejs.org/
     pause
     exit /b 1
 )
+
+echo ========================================
+echo NEON TETRIS - BUILD WINDOWS
+echo ========================================
+echo.
 
 echo Step 1: Building web version...
 if not exist "node_modules" (
@@ -31,31 +35,39 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo.
-echo Step 2: Setting up Electron...
+echo Step 2: Setting up Electron folder...
 cd electron
 
 if not exist "node_modules" (
-    echo Installing Electron dependencies...
+    echo Installing Electron...
     call npm install
 )
 
 echo.
-echo Step 3: Copying web files to Electron...
+echo Step 3: Copying web files...
 if exist "dist" rmdir /s /q dist
+if not exist "..\dist\index.html" (
+    echo ERROR: dist folder not found in parent directory!
+    pause
+    exit /b 1
+)
 xcopy /E /I /Y /Q ..\dist dist >nul
 
 echo.
-echo Step 4: Building Windows executable...
-call npm run dist
+echo Step 4: Creating Windows executable...
+echo This may take a few minutes on first run...
+echo.
+
+call npm run pack
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
-    echo ERROR: Build failed!
+    echo ERROR: Packaging failed!
     echo.
-    echo Common solutions:
+    echo Try:
     echo 1. Run as Administrator
     echo 2. Disable antivirus temporarily
-    echo 3. Check if you have enough disk space
+    echo 3. Check disk space (need 1GB+)
     echo.
     pause
     exit /b 1
@@ -66,18 +78,12 @@ echo ========================================
 echo BUILD COMPLETE!
 echo ========================================
 echo.
-echo Your executables are in: electron\release\
+echo Your executable is in:
+echo   electron\release\NeonTetris-win32-x64\
 echo.
-echo Files created:
-dir /b release\*.exe 2>nul
-echo.
-echo ========================================
-echo Next steps:
-echo ========================================
-echo.
-echo 1. Go to: electron\release\
-echo 2. Run: NeonTetris-Portable.exe (portable version)
-echo    OR: Neon Tetris Setup 1.0.0.exe (installer)
+echo To play:
+echo   1. Open folder: electron\release\NeonTetris-win32-x64\
+echo   2. Run: NeonTetris.exe
 echo.
 echo ========================================
 pause
