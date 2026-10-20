@@ -1,66 +1,27 @@
 @echo off
-chcp 65001 >nul
-title Neon Tetris - Servidor de Desenvolvimento
-color 0B
-
-echo.
-echo ========================================
-echo   NEON TETRIS - SERVIDOR WEB
-echo ========================================
-echo.
-
-REM Mudar para o diretório do script
+title Neon Tetris - Dev Server
 cd /d "%~dp0"
 
-REM Verificar se está no diretório correto
 if not exist "package.json" (
-    color 0C
-    echo [ERRO] package.json nao encontrado!
-    echo.
-    echo Este script deve estar na pasta do projeto.
+    echo ERROR: package.json not found!
     pause
     exit /b 1
 )
 
-echo [OK] Diretorio: %CD%
-echo.
-
-REM Verificar Node.js
 where node >nul 2>nul
 if %ERRORLEVEL% NEQ 0 (
-    color 0C
-    echo [ERRO] Node.js nao encontrado!
-    echo.
-    echo Instale o Node.js em: https://nodejs.org/
+    echo ERROR: Node.js not found!
+    echo Please install Node.js from https://nodejs.org/
     pause
     exit /b 1
 )
 
-REM Instalar dependencias se necessario
 if not exist "node_modules" (
-    echo Instalando dependencias...
+    echo Installing dependencies...
     call npm install
-    if %ERRORLEVEL% NEQ 0 (
-        color 0C
-        echo [ERRO] Falha ao instalar dependencias!
-        pause
-        exit /b 1
-    )
-    echo.
 )
 
-echo ========================================
-echo   Iniciando servidor...
-echo ========================================
+echo Starting development server...
+echo Press Ctrl+C to stop
 echo.
-echo O jogo sera aberto automaticamente no navegador.
-echo.
-echo Para parar o servidor, pressione Ctrl+C
-echo.
-echo ========================================
-echo.
-
-REM Iniciar o servidor de desenvolvimento
 call npm run dev
-
-pause
