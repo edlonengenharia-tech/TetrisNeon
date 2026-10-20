@@ -40,18 +40,25 @@ if not exist "node_modules" (
 )
 
 echo.
-echo Step 3: Copying files...
+echo Step 3: Copying web files to Electron...
 if exist "dist" rmdir /s /q dist
 xcopy /E /I /Y /Q ..\dist dist >nul
 
 echo.
 echo Step 4: Building Windows executable...
-call npm run build:win
+call npm run dist
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
-    echo Trying alternative method...
-    call npx electron-packager . "Neon Tetris" --platform=win32 --arch=x64 --out=release --overwrite
+    echo ERROR: Build failed!
+    echo.
+    echo Common solutions:
+    echo 1. Run as Administrator
+    echo 2. Disable antivirus temporarily
+    echo 3. Check if you have enough disk space
+    echo.
+    pause
+    exit /b 1
 )
 
 echo.
@@ -59,8 +66,18 @@ echo ========================================
 echo BUILD COMPLETE!
 echo ========================================
 echo.
-echo Your executable is in: electron\release\
+echo Your executables are in: electron\release\
 echo.
+echo Files created:
 dir /b release\*.exe 2>nul
 echo.
+echo ========================================
+echo Next steps:
+echo ========================================
+echo.
+echo 1. Go to: electron\release\
+echo 2. Run: NeonTetris-Portable.exe (portable version)
+echo    OR: Neon Tetris Setup 1.0.0.exe (installer)
+echo.
+echo ========================================
 pause

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, globalShortcut, ipcMain } = require('electron');
+const { app, BrowserWindow } = require('electron');
 const path = require('path');
 
 let mainWindow;
@@ -10,7 +10,6 @@ function createWindow() {
     minWidth: 600,
     minHeight: 700,
     title: 'Neon Tetris',
-    icon: path.join(__dirname, 'dist', 'icon.png'),
     backgroundColor: '#0a0a0f',
     webPreferences: {
       nodeIntegration: false,
@@ -21,11 +20,8 @@ function createWindow() {
     fullscreenable: true,
   });
 
-  // Load the app
+  // Load the app from dist folder
   mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
-
-  // Open DevTools in development
-  // mainWindow.webContents.openDevTools();
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -53,9 +49,4 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
   }
-});
-
-// Handle IPC messages
-ipcMain.on('get-version', (event) => {
-  event.reply('app-version', app.getVersion());
 });
