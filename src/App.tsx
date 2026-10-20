@@ -31,6 +31,7 @@ const sounds = {
   move: () => playTone(200, 0.05, 'square', 0.1),
   rotate: () => playTone(400, 0.08, 'sine', 0.15),
   drop: () => playTone(150, 0.15, 'triangle', 0.2),
+  hold: () => playTone(300, 0.1, 'sine', 0.15),
   lineClear: () => {
     setTimeout(() => playTone(523, 0.1, 'sine', 0.2), 0);
     setTimeout(() => playTone(659, 0.1, 'sine', 0.2), 100);
@@ -39,6 +40,12 @@ const sounds = {
   tetris: () => {
     [523, 659, 784, 1047].forEach((note, i) => {
       setTimeout(() => playTone(note, 0.15, 'square', 0.2), i * 100);
+    });
+  },
+  combo: (comboLevel: number) => {
+    const baseFreq = 400 + comboLevel * 50;
+    [baseFreq, baseFreq + 100, baseFreq + 200].forEach((note, i) => {
+      setTimeout(() => playTone(note, 0.1, 'sine', 0.2), i * 80);
     });
   },
   levelUp: () => {
@@ -103,6 +110,19 @@ type Piece = {
   color: string;
   x: number;
   y: number;
+  type: string;
+};
+
+type Particle = {
+  id: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  color: string;
+  life: number;
+  maxLife: number;
+  size: number;
 };
 
 function createEmptyBoard(): Board {
@@ -117,6 +137,7 @@ function getRandomPiece(): Piece {
     color: tetromino.color,
     x: Math.floor(BOARD_WIDTH / 2) - Math.ceil(tetromino.shape[0].length / 2),
     y: 0,
+    type: key,
   };
 }
 
@@ -161,41 +182,110 @@ function placePiece(board: Board, piece: Piece): Board {
   return newBoard;
 }
 
-function clearLines(board: Board): { newBoard: Board; linesCleared: number } {
+function clearLines(board: Board): { newBoard: Board; linesCleared: number; clearedRows: number[] } {
   let linesCleared = 0;
-  const newBoard = board.filter(row => {
+  const clearedRows: number[] = [];
+  const newBoard = board.filter((row, rowIndex) => {
     const isFull = row.every(cell => cell !== null);
-    if (isFull) linesCleared++;
+    if (isFull) {
+      linesCleared++;
+      clearedRows.push(rowIndex);
+    }
     return !isFull;
   });
   while (newBoard.length < BOARD_HEIGHT) {
     newBoard.unshift(Array(BOARD_WIDTH).fill(null));
   }
-  return { newBoard, linesCleared };
+  return { newBoard, linesCleared, clearedRows };
+}
+
+function getGhostPosition(board: Board, piece: Piece): number {
+  let ghostY = piece.y;
+  while (isValidPosition(board, piece.shape, piece.x, ghostY + 1)) {
+    ghostY++;
+  }
+  return ghostY;
 }
 
 export default function App() {
   const [board, setBoard] = useState<Board>(createEmptyBoard());
   const [currentPiece, setCurrentPiece] = useState<Piece>(getRandomPiece());
-  const [nextPiece, setNextPiece] = useState<Piece>(getRandomPiece());
+  const [nextPieces, setNextPieces] = useState<Piece[]>([getRandomPiece(), getRandomPiece(), getRandomPiece()]);
+  const [holdPiece, setHoldPiece] = useState<Piece | null>(null);
+  const [canHold, setCanHold] = useState(true);
   const [score, setScore] = useState(0);
   const [lines, setLines] = useState(0);
   const [level, setLevel] = useState(1);
+  const [combo, setCombo] = useState(0);
+  const [maxCombo, setMaxCombo] = useState(0);
   const [gameOver, setGameOver] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [isStarted, setIsStarted] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
+  const [particles, setParticles] = useState<Particle[]>([]);
+  const [stats, setStats] = useState({
+    piecesPlaced: 0,
+    linesCleared: 0,
+    tetrisCount: 0,
+    timePlayed: 0,
+  });
+  const [shake, setShake] = useState(false);
   const gameLoopRef = useRef<number | null>(null);
   const lastDropRef = useRef<number>(0);
-
-  const toggleSound = () => {
-    soundEnabled = !soundEnabled;
-    setSoundOn(soundEnabled);
-  };
+  const particleIdRef = useRef(0);
+  const startTimeRef = useRef<number>(0);
 
   const getDropSpeed = useCallback(() => {
     return Math.max(100, 800 - (level - 1) * 70);
   }, [level]);
+
+  const createParticles = (rows: number[]) => {
+    const newParticles: Particle[] = [];
+    rows.forEach(row => {
+      for (let i = 0; i < 20; i++) {
+        newParticles.push({
+          id: particleIdRef.current++,
+          x: Math.random() * BOARD_WIDTH * CELL_SIZE,
+          y: row * CELL_SIZE + CELL_SIZE / 2,
+          vx: (Math.random() - 0.5) * 10,
+          vy: (Math.random() - 0.5) * 10,
+          color: ['#00ffff', '#ff00ff', '#00ff00', '#ffff00', '#ff0000'][Math.floor(Math.random() * 5)],
+          life: 1,
+          maxLife: 1,
+          size: Math.random() * 4 + 2,
+        });
+      }
+    });
+    setParticles(prev => [...prev, ...newParticles]);
+  };
+
+  // Particle animation
+  useEffect(() => {
+    if (particles.length === 0) return;
+    const interval = setInterval(() => {
+      setParticles(prev => 
+        prev
+          .map(p => ({
+            ...p,
+            x: p.x + p.vx,
+            y: p.y + p.vy,
+            vy: p.vy + 0.5,
+            life: p.life - 0.02,
+          }))
+          .filter(p => p.life > 0)
+      );
+    }, 30);
+    return () => clearInterval(interval);
+  }, [particles.length]);
+
+  // Time tracking
+  useEffect(() => {
+    if (!isStarted || gameOver || isPaused) return;
+    const interval = setInterval(() => {
+      setStats(prev => ({ ...prev, timePlayed: prev.timePlayed + 1 }));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isStarted, gameOver, isPaused]);
 
   const startNewGame = useCallback(() => {
     initAudio();
@@ -203,27 +293,50 @@ export default function App() {
     const newPiece = getRandomPiece();
     setBoard(createEmptyBoard());
     setCurrentPiece(newPiece);
-    setNextPiece(getRandomPiece());
+    setNextPieces([getRandomPiece(), getRandomPiece(), getRandomPiece()]);
+    setHoldPiece(null);
+    setCanHold(true);
     setScore(0);
     setLines(0);
     setLevel(1);
+    setCombo(0);
+    setMaxCombo(0);
     setGameOver(false);
     setIsPaused(false);
     setIsStarted(true);
+    setParticles([]);
+    setStats({ piecesPlaced: 0, linesCleared: 0, tetrisCount: 0, timePlayed: 0 });
+    startTimeRef.current = Date.now();
   }, []);
 
   const lockPiece = useCallback(() => {
     const newBoard = placePiece(board, currentPiece);
-    const { newBoard: clearedBoard, linesCleared } = clearLines(newBoard);
+    const { newBoard: clearedBoard, linesCleared, clearedRows } = clearLines(newBoard);
 
     if (linesCleared > 0) {
+      createParticles(clearedRows);
+      
       if (linesCleared === 4) {
         sounds.tetris();
+        setShake(true);
+        setTimeout(() => setShake(false), 300);
+        setStats(prev => ({ ...prev, tetrisCount: prev.tetrisCount + 1 }));
       } else {
         sounds.lineClear();
       }
+
+      const newCombo = combo + 1;
+      setCombo(newCombo);
+      if (newCombo > maxCombo) setMaxCombo(newCombo);
+      
+      if (newCombo > 1) {
+        sounds.combo(newCombo);
+      }
+
       const points = [0, 100, 300, 500, 800];
-      setScore(prev => prev + points[linesCleared] * level);
+      const comboBonus = newCombo > 1 ? newCombo * 50 : 0;
+      setScore(prev => prev + (points[linesCleared] * level) + comboBonus);
+      
       setLines(prev => {
         const newLines = prev + linesCleared;
         const newLevel = Math.floor(newLines / 10) + 1;
@@ -233,12 +346,17 @@ export default function App() {
         setLevel(newLevel);
         return newLines;
       });
+
+      setStats(prev => ({ ...prev, linesCleared: prev.linesCleared + linesCleared }));
+    } else {
+      setCombo(0);
     }
 
     setBoard(clearedBoard);
+    setStats(prev => ({ ...prev, piecesPlaced: prev.piecesPlaced + 1 }));
 
-    const newCurrentPiece = nextPiece;
-    const newNextPiece = getRandomPiece();
+    const newCurrentPiece = nextPieces[0];
+    const newNextPieces = [...nextPieces.slice(1), getRandomPiece()];
 
     if (!isValidPosition(clearedBoard, newCurrentPiece.shape, newCurrentPiece.x, newCurrentPiece.y)) {
       setGameOver(true);
@@ -248,8 +366,9 @@ export default function App() {
     }
 
     setCurrentPiece(newCurrentPiece);
-    setNextPiece(newNextPiece);
-  }, [board, currentPiece, nextPiece, level]);
+    setNextPieces(newNextPieces);
+    setCanHold(true);
+  }, [board, currentPiece, nextPieces, level, combo, maxCombo]);
 
   const moveDown = useCallback(() => {
     if (gameOver || isPaused || !isStarted) return;
@@ -303,6 +422,24 @@ export default function App() {
     setTimeout(() => lockPiece(), 0);
   }, [board, currentPiece, gameOver, isPaused, isStarted, lockPiece]);
 
+  const hold = useCallback(() => {
+    if (gameOver || isPaused || !isStarted || !canHold) return;
+    sounds.hold();
+    
+    if (holdPiece) {
+      const tempPiece = holdPiece;
+      setHoldPiece({ ...currentPiece, x: Math.floor(BOARD_WIDTH / 2) - Math.ceil(currentPiece.shape[0].length / 2), y: 0 });
+      setCurrentPiece({ ...tempPiece, x: Math.floor(BOARD_WIDTH / 2) - Math.ceil(tempPiece.shape[0].length / 2), y: 0 });
+    } else {
+      setHoldPiece({ ...currentPiece, x: Math.floor(BOARD_WIDTH / 2) - Math.ceil(currentPiece.shape[0].length / 2), y: 0 });
+      const newCurrentPiece = nextPieces[0];
+      const newNextPieces = [...nextPieces.slice(1), getRandomPiece()];
+      setCurrentPiece(newCurrentPiece);
+      setNextPieces(newNextPieces);
+    }
+    setCanHold(false);
+  }, [gameOver, isPaused, isStarted, canHold, holdPiece, currentPiece, nextPieces]);
+
   // Game loop
   useEffect(() => {
     if (!isStarted || gameOver || isPaused) {
@@ -336,6 +473,15 @@ export default function App() {
         if (isStarted && !gameOver) setIsPaused(prev => !prev);
         return;
       }
+      if (e.key === 'm' || e.key === 'M') {
+        soundEnabled = !soundEnabled;
+        setSoundOn(soundEnabled);
+        return;
+      }
+      if (e.key === 'c' || e.key === 'C') {
+        hold();
+        return;
+      }
       if (e.key === 'Enter' && (!isStarted || gameOver)) {
         startNewGame();
         return;
@@ -351,13 +497,27 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [moveLeft, moveRight, moveDown, rotate, hardDrop, isStarted, gameOver, startNewGame]);
+  }, [moveLeft, moveRight, moveDown, rotate, hardDrop, hold, isStarted, gameOver, startNewGame]);
 
   // Render board
   const renderBoard = () => {
     const displayBoard = board.map(row => [...row]);
+    const ghostY = getGhostPosition(board, currentPiece);
 
     if (isStarted && !gameOver) {
+      // Draw ghost piece
+      for (let row = 0; row < currentPiece.shape.length; row++) {
+        for (let col = 0; col < currentPiece.shape[row].length; col++) {
+          if (currentPiece.shape[row][col]) {
+            const y = ghostY + row;
+            const x = currentPiece.x + col;
+            if (y >= 0 && y < BOARD_HEIGHT && x >= 0 && x < BOARD_WIDTH && !displayBoard[y][x]) {
+              displayBoard[y][x] = `ghost-${currentPiece.color}`;
+            }
+          }
+        }
+      }
+
       // Draw current piece
       for (let row = 0; row < currentPiece.shape.length; row++) {
         for (let col = 0; col < currentPiece.shape[row].length; col++) {
@@ -377,34 +537,72 @@ export default function App() {
 
   const displayBoard = renderBoard();
 
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
   return (
-    <div className="min-h-screen w-full bg-[#0a0a0f] flex items-center justify-center p-4">
-      <div className="flex flex-col items-center gap-4">
-        <h1 className="text-4xl font-black text-[#00ffaa] tracking-wider" style={{ textShadow: '0 0 10px #00ffaa, 0 0 20px #00ffaa' }}>
+    <div className="min-h-screen w-full bg-[#0a0a0f] flex items-center justify-center p-4 overflow-auto">
+      <div className={`flex flex-col lg:flex-row items-start gap-4 ${shake ? 'animate-pulse' : ''}`}>
+        <h1 className="text-4xl font-black text-[#00ffaa] tracking-wider lg:hidden mb-2" style={{ textShadow: '0 0 10px #00ffaa, 0 0 20px #00ffaa' }}>
           NEON TETRIS
         </h1>
 
-        <div className="flex gap-4">
+        <div className="flex flex-col lg:flex-row gap-4">
           {/* Game Board */}
           <div className="relative border-2 border-[#00ffaa] rounded-lg p-1" style={{ boxShadow: '0 0 10px #00ffaa, 0 0 20px #00ffaa' }}>
             <div style={{ width: BOARD_WIDTH * CELL_SIZE, height: BOARD_HEIGHT * CELL_SIZE, position: 'relative' }}>
               {displayBoard.map((row, y) =>
-                row.map((cell, x) => (
-                  <div
-                    key={`${y}-${x}`}
-                    style={{
-                      position: 'absolute',
-                      left: x * CELL_SIZE,
-                      top: y * CELL_SIZE,
-                      width: CELL_SIZE - 1,
-                      height: CELL_SIZE - 1,
-                      backgroundColor: cell || 'rgba(0, 255, 170, 0.05)',
-                      border: cell ? `1px solid ${cell}` : '1px solid rgba(0, 255, 170, 0.1)',
-                      boxShadow: cell ? `0 0 5px ${cell}, 0 0 10px ${cell}` : 'none',
-                    }}
-                  />
-                ))
+                row.map((cell, x) => {
+                  const isGhost = cell?.startsWith('ghost-');
+                  const color = isGhost ? cell!.replace('ghost-', '') : cell;
+                  return (
+                    <div
+                      key={`${y}-${x}`}
+                      style={{
+                        position: 'absolute',
+                        left: x * CELL_SIZE,
+                        top: y * CELL_SIZE,
+                        width: CELL_SIZE - 1,
+                        height: CELL_SIZE - 1,
+                        backgroundColor: color
+                          ? isGhost
+                            ? 'transparent'
+                            : color
+                          : 'rgba(0, 255, 170, 0.05)',
+                        border: color
+                          ? isGhost
+                            ? `1px dashed ${color}40`
+                            : `1px solid ${color}`
+                          : '1px solid rgba(0, 255, 170, 0.1)',
+                        boxShadow: color && !isGhost ? `0 0 5px ${color}, 0 0 10px ${color}` : 'none',
+                        opacity: isGhost ? 0.3 : 1,
+                      }}
+                    />
+                  );
+                })
               )}
+
+              {/* Particles */}
+              {particles.map(p => (
+                <div
+                  key={p.id}
+                  style={{
+                    position: 'absolute',
+                    left: p.x,
+                    top: p.y,
+                    width: p.size,
+                    height: p.size,
+                    backgroundColor: p.color,
+                    boxShadow: `0 0 ${p.size * 2}px ${p.color}`,
+                    borderRadius: '50%',
+                    opacity: p.life,
+                    pointerEvents: 'none',
+                  }}
+                />
+              ))}
 
               {/* Start screen */}
               {!isStarted && !gameOver && (
@@ -430,6 +628,7 @@ export default function App() {
                     GAME OVER
                   </h2>
                   <p className="text-white text-xl mb-2">Score: {score}</p>
+                  <p className="text-white/70 text-sm mb-4">Time: {formatTime(stats.timePlayed)}</p>
                   <button
                     onClick={startNewGame}
                     className="px-8 py-4 bg-transparent border-2 border-[#ff0066] text-[#ff0066] rounded-lg font-bold text-xl hover:bg-[#ff0066]/20 transition-all mt-4"
@@ -451,35 +650,139 @@ export default function App() {
             </div>
           </div>
 
-          {/* Side panel */}
-          <div className="flex flex-col gap-4 w-48">
+          {/* Right Panel */}
+          <div className="flex flex-col gap-3 w-64">
+            {/* Score & Stats */}
             <div className="border border-[#00ffaa] rounded-lg p-3">
               <div className="text-[#00ffaa] text-xs mb-1">SCORE</div>
               <div className="text-white text-2xl font-bold">{score}</div>
+              {combo > 1 && (
+                <div className="text-[#ffff00] text-sm font-bold mt-1" style={{ textShadow: '0 0 5px #ffff00' }}>
+                  COMBO x{combo}!
+                </div>
+              )}
             </div>
-            <div className="border border-[#ff00ff] rounded-lg p-3">
-              <div className="text-[#ff00ff] text-xs mb-1">LEVEL</div>
-              <div className="text-white text-2xl font-bold">{level}</div>
+
+            {/* Level & Lines */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="border border-[#ff00ff] rounded-lg p-3">
+                <div className="text-[#ff00ff] text-xs mb-1">LEVEL</div>
+                <div className="text-white text-xl font-bold">{level}</div>
+              </div>
+              <div className="border border-[#00aaff] rounded-lg p-3">
+                <div className="text-[#00aaff] text-xs mb-1">LINES</div>
+                <div className="text-white text-xl font-bold">{lines}</div>
+              </div>
             </div>
-            <div className="border border-[#00aaff] rounded-lg p-3">
-              <div className="text-[#00aaff] text-xs mb-1">LINES</div>
-              <div className="text-white text-2xl font-bold">{lines}</div>
+
+            {/* Hold Piece */}
+            <div className="border border-[#ff6600] rounded-lg p-3">
+              <div className="text-[#ff6600] text-xs mb-2">HOLD (C)</div>
+              {holdPiece ? (
+                <div className="flex justify-center">
+                  <div style={{ width: 4 * 16, height: 4 * 16, position: 'relative' }}>
+                    {holdPiece.shape.map((row, y) =>
+                      row.map((cell, x) =>
+                        cell ? (
+                          <div
+                            key={`hold-${y}-${x}`}
+                            style={{
+                              position: 'absolute',
+                              left: x * 16,
+                              top: y * 16,
+                              width: 15,
+                              height: 15,
+                              backgroundColor: holdPiece.color,
+                              border: `1px solid ${holdPiece.color}`,
+                              boxShadow: `0 0 5px ${holdPiece.color}`,
+                            }}
+                          />
+                        ) : null
+                      )
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-white/30 text-xs text-center py-2">Empty</div>
+              )}
+            </div>
+
+            {/* Next Pieces */}
+            <div className="border border-[#00ff00] rounded-lg p-3">
+              <div className="text-[#00ff00] text-xs mb-2">NEXT</div>
+              <div className="flex flex-col gap-2">
+                {nextPieces.map((piece, idx) => (
+                  <div key={idx} className="flex justify-center" style={{ opacity: 1 - idx * 0.2 }}>
+                    <div style={{ width: 4 * 14, height: 4 * 14, position: 'relative' }}>
+                      {piece.shape.map((row, y) =>
+                        row.map((cell, x) =>
+                          cell ? (
+                            <div
+                              key={`next-${idx}-${y}-${x}`}
+                              style={{
+                                position: 'absolute',
+                                left: x * 14,
+                                top: y * 14,
+                                width: 13,
+                                height: 13,
+                                backgroundColor: piece.color,
+                                border: `1px solid ${piece.color}`,
+                                boxShadow: `0 0 3px ${piece.color}`,
+                              }}
+                            />
+                          ) : null
+                        )
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Statistics */}
+            <div className="border border-[#00ffaa]/50 rounded-lg p-3 text-xs">
+              <div className="text-[#00ffaa] mb-2">STATISTICS</div>
+              <div className="text-white/70 space-y-1">
+                <div className="flex justify-between">
+                  <span>Pieces:</span>
+                  <span className="text-white">{stats.piecesPlaced}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Tetris:</span>
+                  <span className="text-white">{stats.tetrisCount}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Max Combo:</span>
+                  <span className="text-white">{maxCombo}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Time:</span>
+                  <span className="text-white">{formatTime(stats.timePlayed)}</span>
+                </div>
+              </div>
             </div>
 
             {/* Controls */}
             <div className="border border-[#00ffaa]/50 rounded-lg p-3 text-xs text-white/70">
-              <div className="mb-2">CONTROLS:</div>
-              <div>← → Move</div>
-              <div>↑ Rotate</div>
-              <div>↓ Soft drop</div>
-              <div>SPACE Hard drop</div>
-              <div>P Pause</div>
+              <div className="text-[#00ffaa] mb-2">CONTROLS</div>
+              <div className="space-y-1">
+                <div>← → Move</div>
+                <div>↑ Rotate</div>
+                <div>↓ Soft drop</div>
+                <div>SPACE Hard drop</div>
+                <div>C Hold piece</div>
+                <div>P Pause</div>
+                <div>M Sound</div>
+              </div>
             </div>
 
             {/* Sound toggle */}
             <button
-              onClick={toggleSound}
-              className="border border-[#ffff00] rounded-lg p-3 text-[#ffff00] font-bold hover:bg-[#ffff00]/20 transition-all"
+              onClick={() => {
+                soundEnabled = !soundEnabled;
+                setSoundOn(soundEnabled);
+              }}
+              className="border border-[#ffff00] rounded-lg p-3 text-[#ffff00] font-bold hover:bg-[#ffff00]/20 transition-all text-sm"
               style={{ boxShadow: soundOn ? '0 0 10px #ffff00' : 'none' }}
             >
               {soundOn ? '🔊 SOUND ON' : '🔇 SOUND OFF'}
@@ -488,16 +791,30 @@ export default function App() {
         </div>
 
         {/* Mobile controls */}
-        <div className="lg:hidden flex flex-col gap-2 mt-4">
-          <div className="flex justify-center gap-2">
-            <button onClick={rotate} className="w-16 h-16 border-2 border-[#ff00ff] text-[#ff00ff] text-2xl rounded-lg active:bg-[#ff00ff]/20">↻</button>
+        <div className="lg:hidden flex flex-col gap-2 mt-4 w-full max-w-xs">
+          <div className="grid grid-cols-3 gap-2">
+            <button onClick={hold} className="h-14 border-2 border-[#ff6600] text-[#ff6600] text-sm font-bold rounded-lg active:bg-[#ff6600]/20">
+              HOLD
+            </button>
+            <button onClick={rotate} className="h-14 border-2 border-[#ff00ff] text-[#ff00ff] text-2xl rounded-lg active:bg-[#ff00ff]/20">
+              ↻
+            </button>
+            <div></div>
           </div>
-          <div className="flex justify-center gap-2">
-            <button onClick={moveLeft} className="w-16 h-16 border-2 border-[#00ffaa] text-[#00ffaa] text-2xl rounded-lg active:bg-[#00ffaa]/20">←</button>
-            <button onClick={moveDown} className="w-16 h-16 border-2 border-[#00ffaa] text-[#00ffaa] text-2xl rounded-lg active:bg-[#00ffaa]/20">↓</button>
-            <button onClick={moveRight} className="w-16 h-16 border-2 border-[#00ffaa] text-[#00ffaa] text-2xl rounded-lg active:bg-[#00ffaa]/20">→</button>
+          <div className="grid grid-cols-3 gap-2">
+            <button onClick={moveLeft} className="h-14 border-2 border-[#00ffaa] text-[#00ffaa] text-2xl rounded-lg active:bg-[#00ffaa]/20">
+              ←
+            </button>
+            <button onClick={moveDown} className="h-14 border-2 border-[#00ffaa] text-[#00ffaa] text-2xl rounded-lg active:bg-[#00ffaa]/20">
+              ↓
+            </button>
+            <button onClick={moveRight} className="h-14 border-2 border-[#00ffaa] text-[#00ffaa] text-2xl rounded-lg active:bg-[#00ffaa]/20">
+              →
+            </button>
           </div>
-          <button onClick={hardDrop} className="w-full h-12 border-2 border-[#ffff00] text-[#ffff00] font-bold rounded-lg active:bg-[#ffff00]/20">DROP</button>
+          <button onClick={hardDrop} className="h-12 border-2 border-[#ffff00] text-[#ffff00] font-bold rounded-lg active:bg-[#ffff00]/20">
+            ⬇ DROP
+          </button>
         </div>
       </div>
     </div>
